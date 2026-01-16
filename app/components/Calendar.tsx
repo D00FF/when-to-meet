@@ -220,7 +220,7 @@ export default function Calendar({ currentUser }: CalendarProps) {
         <div className="flex items-center justify-between">
           <button
             onClick={handlePreviousWeek}
-            className="p-2 rounded-lg hover:bg-zinc-100 transition-colors"
+            className="p-2 rounded-lg hover:bg-zinc-100 active:bg-zinc-200 transition-colors touch-manipulation"
             aria-label="Previous week"
           >
             <svg className="w-5 h-5 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -228,11 +228,11 @@ export default function Calendar({ currentUser }: CalendarProps) {
             </svg>
           </button>
           
-          <div className="text-xl font-semibold text-zinc-900">{weekRangeText}</div>
+          <div className="text-lg md:text-xl font-semibold text-zinc-900 text-center px-2">{weekRangeText}</div>
           
           <button
             onClick={handleNextWeek}
-            className="p-2 rounded-lg hover:bg-zinc-100 transition-colors"
+            className="p-2 rounded-lg hover:bg-zinc-100 active:bg-zinc-200 transition-colors touch-manipulation"
             aria-label="Next week"
           >
             <svg className="w-5 h-5 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -240,24 +240,28 @@ export default function Calendar({ currentUser }: CalendarProps) {
             </svg>
           </button>
         </div>
+        {/* Mobile scroll hint */}
+        <div className="md:hidden mt-2 text-xs text-zinc-500 text-center">
+          ← Swipe to see all days →
+        </div>
       </div>
 
-      <div className="w-full overflow-x-auto">
-        <div className="inline-block min-w-full">
+      <div className="w-full overflow-x-auto overflow-y-visible -mx-4 px-4 md:mx-0 md:px-0 scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent">
+        <div className="inline-block min-w-[800px] md:min-w-full">
           <div className="grid grid-cols-8 gap-x-2 gap-y-0">
             {/* Time column header */}
-            <div className="sticky left-0 z-10 bg-white backdrop-blur-sm rounded-lg p-2 border border-zinc-200">
-              <div className="text-xs font-medium text-zinc-500 text-center">Time</div>
+            <div className="sticky left-0 z-10 bg-white backdrop-blur-sm rounded-lg p-2 border border-zinc-200 shadow-sm">
+              <div className="text-xs font-medium text-zinc-500 text-center whitespace-nowrap">Time</div>
             </div>
 
             {/* Day headers */}
             {weekDates.map((date, idx) => (
               <div
                 key={idx}
-                className="bg-white backdrop-blur-sm rounded-lg p-2 border border-zinc-200 text-center"
+                className="bg-white backdrop-blur-sm rounded-lg p-2 border border-zinc-200 text-center min-w-[80px]"
               >
-                <div className="text-sm font-semibold text-zinc-900">{getDayNumber(date)}</div>
-                <div className="text-xs text-zinc-500">{DAYS[idx].slice(0, 3).toUpperCase()}</div>
+                <div className="text-sm font-semibold text-zinc-900 whitespace-nowrap">{getDayNumber(date)}</div>
+                <div className="text-xs text-zinc-500 whitespace-nowrap">{DAYS[idx].slice(0, 3).toUpperCase()}</div>
               </div>
             ))}
 
@@ -266,7 +270,7 @@ export default function Calendar({ currentUser }: CalendarProps) {
               const timeCell = (
                 <div
                   key={`time-${timeIndex}`}
-                  className="sticky left-0 z-10 bg-white backdrop-blur-sm rounded-lg p-1.5 border border-zinc-200 flex items-center justify-center"
+                  className="sticky left-0 z-10 bg-white backdrop-blur-sm rounded-lg p-1.5 border border-zinc-200 flex items-center justify-center shadow-sm min-w-[80px]"
                 >
                   <span className="text-[10px] text-zinc-600 whitespace-nowrap">{time}</span>
                 </div>
@@ -292,7 +296,7 @@ export default function Calendar({ currentUser }: CalendarProps) {
                 return (
                   <div
                     key={`${day}-${timeIndex}`}
-                    className={`min-h-[28px] border-2 transition-all cursor-pointer hover:shadow-md hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center ${
+                    className={`min-h-[28px] min-w-[80px] border-2 transition-all cursor-pointer hover:shadow-md hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center select-none ${
                       isFirstSlot ? 'rounded-t-lg border-t-2' : 'rounded-none border-t-0'
                     } ${timeIndex === TIME_SLOTS.length - 1 ? 'rounded-b-lg border-b-2' : ''}`}
                     style={hasMultipleUsers ? {
@@ -306,38 +310,70 @@ export default function Calendar({ currentUser }: CalendarProps) {
                     }}
                     onMouseEnter={() => handleMouseEnter(day, timeIndex)}
                     onMouseUp={() => handleMouseUp.current()}
+                    onTouchStart={(e) => {
+                      // Only prevent default if we're actually starting a selection
+                      // Allow scrolling otherwise
+                      if (e.touches.length === 1) {
+                        handleMouseDown(day, timeIndex);
+                      }
+                    }}
+                    onTouchMove={(e) => {
+                      // Don't prevent default to allow scrolling
+                      if (isDragging && dragStart) {
+                        const touch = e.touches[0];
+                        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                        if (element) {
+                          const cell = element.closest('[data-day][data-time]');
+                          if (cell) {
+                            const cellDay = parseInt(cell.getAttribute('data-day') || '0');
+                            const cellTime = parseInt(cell.getAttribute('data-time') || '0');
+                            handleMouseEnter(cellDay, cellTime);
+                          }
+                        }
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      if (isDragging) {
+                        e.preventDefault();
+                        handleMouseUp.current();
+                      }
+                    }}
+                    data-day={day}
+                    data-time={timeIndex}
                   >
                     {(slot && slot.length > 0) || showPreview ? (
-                      <div className="flex items-center gap-0.5 justify-center w-full px-1">
+                      <div className="flex items-center gap-0.5 justify-center w-full px-1 overflow-hidden">
                         {showPreview && (!slot || slot.length === 0) ? (
                           <div
                             className="rounded-full bg-white border-2 flex items-center justify-center text-[10px] font-semibold text-zinc-700 flex-shrink-0"
                             style={{ 
                               borderColor: currentUser.color,
-                              width: slot && slot.length > 3 ? `${100 / (slot.length + 1)}%` : '24px',
-                              height: slot && slot.length > 3 ? `${100 / (slot.length + 1)}%` : '24px',
+                              width: slot && slot.length > 3 ? `${100 / (slot.length + 1)}%` : '20px',
+                              height: slot && slot.length > 3 ? `${100 / (slot.length + 1)}%` : '20px',
                               minWidth: '16px',
                               minHeight: '16px',
-                              fontSize: slot && slot.length > 3 ? '8px' : '10px'
+                              fontSize: slot && slot.length > 3 ? '8px' : '9px'
                             }}
                           >
                             {getInitials(currentUser.name)}
                           </div>
                         ) : slot && slot.length > 0 ? (
                           slot.map((entry, entryIdx) => {
-                            const iconSize = slot.length > 3 ? `${100 / slot.length}%` : '24px';
-                            const fontSize = slot.length > 3 ? '8px' : slot.length === 3 ? '9px' : '10px';
+                            const iconSize = slot.length > 3 ? `${Math.max(100 / slot.length, 18)}%` : '20px';
+                            const fontSize = slot.length > 3 ? '7px' : slot.length === 3 ? '8px' : '9px';
                             return (
                               <div
                                 key={entryIdx}
-                                className="rounded-full bg-white border-2 flex items-center justify-center font-semibold text-zinc-700 flex-shrink"
+                                className="rounded-full bg-white border-2 flex items-center justify-center font-semibold text-zinc-700 flex-shrink-0"
                                 style={{ 
                                   borderColor: entry.color,
                                   width: iconSize,
                                   height: iconSize,
                                   minWidth: '16px',
                                   minHeight: '16px',
-                                  fontSize: fontSize
+                                  fontSize: fontSize,
+                                  maxWidth: '24px',
+                                  maxHeight: '24px'
                                 }}
                               >
                                 {getInitials(entry.userName)}

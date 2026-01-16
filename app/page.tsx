@@ -48,7 +48,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="container mx-auto px-4 py-8 max-w-7xl overflow-x-hidden">
         {/* Header */}
         <header className="mb-8">
           <div className="flex items-center justify-between mb-4">
