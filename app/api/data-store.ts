@@ -1,46 +1,79 @@
 import { User, CalendarData } from "../types";
-import { kv } from "@vercel/kv";
+import { createClient } from "redis";
 
 const USERS_KEY = "when-to-meet:users";
 const CALENDAR_KEY = "when-to-meet:calendar";
 
-// Helper to check if KV is configured
-function isKVConfigured(): boolean {
-  const hasUrl = !!process.env.KV_REST_API_URL;
-  const hasToken = !!process.env.KV_REST_API_TOKEN;
-  
-  // Log for debugging (only in development)
-  if (process.env.NODE_ENV === 'development' && (!hasUrl || !hasToken)) {
-    console.log('KV Config Check:', {
-      hasUrl,
-      hasToken,
-      urlLength: process.env.KV_REST_API_URL?.length || 0,
-      tokenLength: process.env.KV_REST_API_TOKEN?.length || 0
-    });
+// Initialize Redis client (reused across serverless invocations)
+let redisClient: ReturnType<typeof createClient> | null = null;
+let isConnecting = false;
+
+async function getRedisClient() {
+  // Return existing connected client
+  if (redisClient && redisClient.isOpen) {
+    return redisClient;
   }
-  
-  return hasUrl && hasToken;
+
+  if (!process.env.REDIS_URL) {
+    throw new Error("REDIS_URL environment variable is not set. Please configure your Redis database.");
+  }
+
+  // Prevent multiple simultaneous connection attempts
+  if (isConnecting) {
+    // Wait a bit and retry
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return getRedisClient();
+  }
+
+  isConnecting = true;
+
+  try {
+    redisClient = createClient({
+      url: process.env.REDIS_URL,
+      socket: {
+        reconnectStrategy: (retries) => {
+          if (retries > 3) {
+            return new Error("Too many reconnection attempts");
+          }
+          return Math.min(retries * 100, 3000);
+        },
+      },
+    });
+
+    redisClient.on("error", (err) => {
+      console.error("Redis Client Error:", err);
+    });
+
+    await redisClient.connect();
+    return redisClient;
+  } finally {
+    isConnecting = false;
+  }
+}
+
+// Helper to check if Redis is configured
+function isRedisConfigured(): boolean {
+  return !!process.env.REDIS_URL;
 }
 
 // Users operations
 export async function getAllUsers(): Promise<User[]> {
-  if (!isKVConfigured()) {
-    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
-    throw new Error("Database not configured. Please set up Vercel KV in your project settings.");
+  if (!isRedisConfigured()) {
+    throw new Error("Database not configured. Please set up Redis in your project settings.");
   }
   try {
-    const data = await kv.get<User[]>(USERS_KEY);
-    return data || [];
+    const client = await getRedisClient();
+    const data = await client.get(USERS_KEY);
+    return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error("Error fetching users from KV:", error);
+    console.error("Error fetching users from Redis:", error);
     throw error;
   }
 }
 
 export async function saveUser(user: User): Promise<void> {
-  if (!isKVConfigured()) {
-    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
-    throw new Error("Database not configured. Please set up Vercel KV in your project settings.");
+  if (!isRedisConfigured()) {
+    throw new Error("Database not configured. Please set up Redis in your project settings.");
   }
   try {
     const users = await getAllUsers();
@@ -50,18 +83,23 @@ export async function saveUser(user: User): Promise<void> {
     } else {
       users.push(user);
     }
-    await kv.set(USERS_KEY, users);
+    const client = await getRedisClient();
+    await client.set(USERS_KEY, JSON.stringify(users));
   } catch (error) {
-    console.error("Error saving user to KV:", error);
+    console.error("Error saving user to Redis:", error);
     throw error;
   }
 }
 
 export async function deleteUser(userId: string): Promise<void> {
+  if (!isRedisConfigured()) {
+    throw new Error("Database not configured. Please set up Redis in your project settings.");
+  }
   try {
     const users = await getAllUsers();
     const filtered = users.filter((u) => u.id !== userId);
-    await kv.set(USERS_KEY, filtered);
+    const client = await getRedisClient();
+    await client.set(USERS_KEY, JSON.stringify(filtered));
     
     // Also remove from calendar data
     const calendarData = await getAllCalendarData();
@@ -76,24 +114,24 @@ export async function deleteUser(userId: string): Promise<void> {
         }
       });
     });
-    await kv.set(CALENDAR_KEY, calendarData);
+    await client.set(CALENDAR_KEY, JSON.stringify(calendarData));
   } catch (error) {
-    console.error("Error deleting user from KV:", error);
+    console.error("Error deleting user from Redis:", error);
     throw error;
   }
 }
 
 // Calendar operations
 export async function getAllCalendarData(): Promise<Record<string, CalendarData>> {
-  if (!isKVConfigured()) {
-    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
+  if (!isRedisConfigured()) {
     return {};
   }
   try {
-    const data = await kv.get<Record<string, CalendarData>>(CALENDAR_KEY);
-    return data || {};
+    const client = await getRedisClient();
+    const data = await client.get(CALENDAR_KEY);
+    return data ? JSON.parse(data) : {};
   } catch (error) {
-    console.error("Error fetching calendar data from KV:", error);
+    console.error("Error fetching calendar data from Redis:", error);
     return {};
   }
 }
@@ -107,16 +145,16 @@ export async function saveCalendarData(
   weekKey: string,
   data: CalendarData
 ): Promise<void> {
-  if (!isKVConfigured()) {
-    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
-    throw new Error("Database not configured. Please set up Vercel KV in your project settings.");
+  if (!isRedisConfigured()) {
+    throw new Error("Database not configured. Please set up Redis in your project settings.");
   }
   try {
     const allData = await getAllCalendarData();
     allData[weekKey] = data;
-    await kv.set(CALENDAR_KEY, allData);
+    const client = await getRedisClient();
+    await client.set(CALENDAR_KEY, JSON.stringify(allData));
   } catch (error) {
-    console.error("Error saving calendar data to KV:", error);
+    console.error("Error saving calendar data to Redis:", error);
     throw error;
   }
 }
@@ -167,6 +205,9 @@ export async function updateUserEntries(
   userName: string,
   color: string
 ): Promise<void> {
+  if (!isRedisConfigured()) {
+    throw new Error("Database not configured. Please set up Redis in your project settings.");
+  }
   try {
     const allData = await getAllCalendarData();
     let updated = false;
@@ -184,11 +225,11 @@ export async function updateUserEntries(
     });
 
     if (updated) {
-      await kv.set(CALENDAR_KEY, allData);
+      const client = await getRedisClient();
+      await client.set(CALENDAR_KEY, JSON.stringify(allData));
     }
   } catch (error) {
-    console.error("Error updating user entries in KV:", error);
+    console.error("Error updating user entries in Redis:", error);
     throw error;
   }
 }
-
