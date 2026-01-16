@@ -8,15 +8,19 @@ export default function Legend() {
   const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    const updateUsers = () => {
-      const savedUsers = getAllSavedUsers();
-      setUsers(savedUsers);
+    const updateUsers = async () => {
+      try {
+        const savedUsers = await getAllSavedUsers();
+        setUsers(savedUsers);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
     };
 
     updateUsers();
 
     // Update periodically to catch new users
-    const interval = setInterval(updateUsers, 1000);
+    const interval = setInterval(updateUsers, 2000);
     return () => clearInterval(interval);
   }, []);
 
