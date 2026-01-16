@@ -1,18 +1,22 @@
 import { User, CalendarData } from "../types";
 
 const USER_STORAGE_KEY = "when-to-meet-user";
-const CALENDAR_STORAGE_KEY = "when-to-meet-calendar";
-const SAVED_USERS_KEY = "when-to-meet-saved-users";
 
+// Local storage for current user session only (not synced)
 export function getUser(): User | null {
   if (typeof window === "undefined") return null;
   const stored = localStorage.getItem(USER_STORAGE_KEY);
   return stored ? JSON.parse(stored) : null;
 }
 
-export function saveUser(user: User): void {
+export function saveUserLocally(user: User): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+}
+
+export function signOut(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(USER_STORAGE_KEY);
 }
 
 function getWeekKey(weekStart: Date): string {
@@ -22,153 +26,146 @@ function getWeekKey(weekStart: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export function getCalendarData(weekStart: Date): CalendarData {
+// API-based functions
+export async function saveUser(user: User): Promise<void> {
+  try {
+    const response = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(user),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to save user");
+    }
+    // Also save locally for session
+    saveUserLocally(user);
+  } catch (error) {
+    console.error("Error saving user:", error);
+    throw error;
+  }
+}
+
+export async function getCalendarData(weekStart: Date): Promise<CalendarData> {
   if (typeof window === "undefined") return {};
   const weekKey = getWeekKey(weekStart);
-  const stored = localStorage.getItem(CALENDAR_STORAGE_KEY);
-  if (!stored) return {};
-  const allData = JSON.parse(stored);
-  return allData[weekKey] || {};
+  try {
+    const response = await fetch(`/api/calendar?weekKey=${weekKey}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch calendar data");
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error fetching calendar data:", error);
+    return {};
+  }
 }
 
-export function saveCalendarData(weekStart: Date, data: CalendarData): void {
+export async function saveCalendarData(weekStart: Date, data: CalendarData): Promise<void> {
   if (typeof window === "undefined") return;
   const weekKey = getWeekKey(weekStart);
-  const stored = localStorage.getItem(CALENDAR_STORAGE_KEY);
-  const allData = stored ? JSON.parse(stored) : {};
-  allData[weekKey] = data;
-  localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(allData));
-}
-
-export function updateCalendarSlot(weekStart: Date, day: number, timeIndex: number, userId: string, userName: string, color: string, isSelected: boolean): void {
-  const calendarData = getCalendarData(weekStart);
-  const key = `${day}-${timeIndex}`;
-  
-  if (isSelected) {
-    // Add user to slot if not already present
-    if (!calendarData[key]) {
-      calendarData[key] = [];
-    }
-    const exists = calendarData[key].some(entry => entry.userId === userId);
-    if (!exists) {
-      calendarData[key].push({ userId, userName, color });
-    } else {
-      // Update existing entry with new name/color
-      const index = calendarData[key].findIndex(entry => entry.userId === userId);
-      if (index !== -1) {
-        calendarData[key][index] = { userId, userName, color };
-      }
-    }
-  } else {
-    // Remove user from slot
-    if (calendarData[key]) {
-      calendarData[key] = calendarData[key].filter(entry => entry.userId !== userId);
-      if (calendarData[key].length === 0) {
-        delete calendarData[key];
-      }
-    }
-  }
-  
-  saveCalendarData(weekStart, calendarData);
-}
-
-export function updateUserEntries(userId: string, userName: string, color: string): void {
-  if (typeof window === "undefined") return;
-  const stored = localStorage.getItem(CALENDAR_STORAGE_KEY);
-  if (!stored) return;
-  const allData = JSON.parse(stored);
-  let updated = false;
-  
-  // Update user entries across all weeks
-  Object.keys(allData).forEach((weekKey) => {
-    const calendarData = allData[weekKey];
-    Object.keys(calendarData).forEach((slotKey) => {
-      const entries = calendarData[slotKey];
-      const userIndex = entries.findIndex((entry: any) => entry.userId === userId);
-      if (userIndex !== -1) {
-        entries[userIndex] = { userId, userName, color };
-        updated = true;
-      }
+  try {
+    const response = await fetch("/api/calendar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ weekKey, data }),
     });
-  });
-  
-  if (updated) {
-    localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(allData));
-  }
-  
-  // Also update saved users list
-  const savedUsers = getAllSavedUsers();
-  const userIndex = savedUsers.findIndex(u => u.id === userId);
-  if (userIndex !== -1) {
-    savedUsers[userIndex] = { id: userId, name: userName, color };
-    saveAllUsers(savedUsers);
+    if (!response.ok) {
+      throw new Error("Failed to save calendar data");
+    }
+  } catch (error) {
+    console.error("Error saving calendar data:", error);
+    throw error;
   }
 }
 
-export function getAllSavedUsers(): User[] {
+export async function updateCalendarSlot(
+  weekStart: Date,
+  day: number,
+  timeIndex: number,
+  userId: string,
+  userName: string,
+  color: string,
+  isSelected: boolean
+): Promise<void> {
+  const weekKey = getWeekKey(weekStart);
+  try {
+    const response = await fetch("/api/calendar", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        weekKey,
+        day,
+        timeIndex,
+        userId,
+        userName,
+        color,
+        isSelected,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to update calendar slot");
+    }
+  } catch (error) {
+    console.error("Error updating calendar slot:", error);
+    throw error;
+  }
+}
+
+export async function updateUserEntries(
+  userId: string,
+  userName: string,
+  color: string
+): Promise<void> {
+  try {
+    const response = await fetch("/api/users", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, userName, color }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to update user entries");
+    }
+  } catch (error) {
+    console.error("Error updating user entries:", error);
+    throw error;
+  }
+}
+
+export async function getAllSavedUsers(): Promise<User[]> {
   if (typeof window === "undefined") return [];
-  const stored = localStorage.getItem(SAVED_USERS_KEY);
-  return stored ? JSON.parse(stored) : [];
-}
-
-export function saveAllUsers(users: User[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(SAVED_USERS_KEY, JSON.stringify(users));
-}
-
-export function addUserToSaved(user: User): void {
-  const savedUsers = getAllSavedUsers();
-  const exists = savedUsers.some(u => u.id === user.id);
-  if (!exists) {
-    savedUsers.push(user);
-    saveAllUsers(savedUsers);
-  } else {
-    // Update existing user
-    const index = savedUsers.findIndex(u => u.id === user.id);
-    if (index !== -1) {
-      savedUsers[index] = user;
-      saveAllUsers(savedUsers);
+  try {
+    const response = await fetch("/api/users");
+    if (!response.ok) {
+      throw new Error("Failed to fetch users");
     }
+    return await response.json();
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return [];
   }
 }
 
-export function deleteUser(userId: string): void {
-  if (typeof window === "undefined") return;
-  
-  // Remove from saved users
-  const savedUsers = getAllSavedUsers();
-  const filtered = savedUsers.filter(u => u.id !== userId);
-  saveAllUsers(filtered);
-  
-  // Remove all entries from all weeks
-  const stored = localStorage.getItem(CALENDAR_STORAGE_KEY);
-  if (!stored) return;
-  const allData = JSON.parse(stored);
-  
-  Object.keys(allData).forEach((weekKey) => {
-    const calendarData = allData[weekKey];
-    Object.keys(calendarData).forEach((slotKey) => {
-      const entries = calendarData[slotKey];
-      const filteredEntries = entries.filter((entry: any) => entry.userId !== userId);
-      if (filteredEntries.length === 0) {
-        delete calendarData[slotKey];
-      } else {
-        calendarData[slotKey] = filteredEntries;
-      }
+export async function addUserToSaved(user: User): Promise<void> {
+  await saveUser(user);
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  try {
+    const response = await fetch(`/api/users?userId=${userId}`, {
+      method: "DELETE",
     });
-  });
-  
-  localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(allData));
+    if (!response.ok) {
+      throw new Error("Failed to delete user");
+    }
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    throw error;
+  }
 }
 
-export function signOut(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(USER_STORAGE_KEY);
-}
-
-export function findUserByName(name: string): User | null {
-  const savedUsers = getAllSavedUsers();
+export async function findUserByName(name: string): Promise<User | null> {
+  const savedUsers = await getAllSavedUsers();
   const trimmedName = name.trim().toLowerCase();
-  return savedUsers.find(u => u.name.trim().toLowerCase() === trimmedName) || null;
+  return savedUsers.find((u) => u.name.trim().toLowerCase() === trimmedName) || null;
 }
 

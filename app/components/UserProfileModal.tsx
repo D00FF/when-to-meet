@@ -32,7 +32,7 @@ export default function UserProfileModal({ isOpen, onClose, onDelete }: UserProf
     }
   }, [isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError("Please enter your name");
@@ -42,50 +42,60 @@ export default function UserProfileModal({ isOpen, onClose, onDelete }: UserProf
     const currentLoggedInUser = getUser();
     const trimmedName = name.trim();
     
-    // If not editing an existing profile, check if a user with this name exists
-    if (!currentLoggedInUser) {
-      const existingUserByName = findUserByName(trimmedName);
-      if (existingUserByName) {
-        // Log in to existing profile
-        saveUser(existingUserByName);
-        onClose(existingUserByName);
-        setError("");
-        return;
+    try {
+      // If not editing an existing profile, check if a user with this name exists
+      if (!currentLoggedInUser) {
+        const existingUserByName = await findUserByName(trimmedName);
+        if (existingUserByName) {
+          // Log in to existing profile
+          await saveUser(existingUserByName);
+          onClose(existingUserByName);
+          setError("");
+          return;
+        }
       }
-    }
 
-    // Create new user or update existing
-    const user: User = currentLoggedInUser ? {
-      ...currentLoggedInUser,
-      name: trimmedName,
-      color: selectedColor,
-    } : {
-      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: trimmedName,
-      color: selectedColor,
-    };
+      // Create new user or update existing
+      const user: User = currentLoggedInUser ? {
+        ...currentLoggedInUser,
+        name: trimmedName,
+        color: selectedColor,
+      } : {
+        id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: trimmedName,
+        color: selectedColor,
+      };
 
-    saveUser(user);
-    addUserToSaved(user); // Add to saved users list
-    
-    // Update all existing calendar entries if user already exists
-    if (currentLoggedInUser) {
-      updateUserEntries(user.id, user.name, user.color);
+      await saveUser(user);
+      await addUserToSaved(user); // Add to saved users list
+      
+      // Update all existing calendar entries if user already exists
+      if (currentLoggedInUser) {
+        await updateUserEntries(user.id, user.name, user.color);
+      }
+      
+      onClose(user);
+      setError("");
+    } catch (error) {
+      console.error("Error saving user:", error);
+      setError("Failed to save profile. Please try again.");
     }
-    
-    onClose(user);
-    setError("");
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const existingUser = getUser();
     if (existingUser && window.confirm(`Are you sure you want to delete your profile? This will remove all your entries from all weeks.`)) {
-      deleteUser(existingUser.id);
-      localStorage.removeItem("when-to-meet-user"); // Clear current user
-      if (onDelete) {
-        onDelete();
+      try {
+        await deleteUser(existingUser.id);
+        localStorage.removeItem("when-to-meet-user"); // Clear current user
+        if (onDelete) {
+          onDelete();
+        }
+        onClose(null);
+      } catch (error) {
+        console.error("Error deleting user:", error);
+        setError("Failed to delete profile. Please try again.");
       }
-      onClose(null);
     }
   };
 

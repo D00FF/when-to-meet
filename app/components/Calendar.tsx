@@ -26,33 +26,24 @@ export default function Calendar({ currentUser }: CalendarProps) {
 
   useEffect(() => {
     // Load calendar data for current week
-    const loadWeekData = () => {
-      const data = getCalendarData(currentWeekStart);
-      setCalendarData(data);
-      calendarDataRef.current = data;
+    const loadWeekData = async () => {
+      try {
+        const data = await getCalendarData(currentWeekStart);
+        setCalendarData(data);
+        calendarDataRef.current = data;
+      } catch (error) {
+        console.error("Error loading calendar data:", error);
+      }
     };
 
     loadWeekData();
-
-    // Listen for storage changes (for multi-tab support)
-    const handleStorageChange = () => {
-      loadWeekData();
-    };
-    window.addEventListener("storage", handleStorageChange);
     
-    // Poll for changes (since storage event doesn't fire in same tab)
+    // Poll for changes from other users
     const interval = setInterval(() => {
-      const latest = getCalendarData(currentWeekStart);
-      const currentStr = JSON.stringify(calendarDataRef.current);
-      const latestStr = JSON.stringify(latest);
-      if (currentStr !== latestStr) {
-        setCalendarData(latest);
-        calendarDataRef.current = latest;
-      }
-    }, 500);
+      loadWeekData();
+    }, 2000); // Poll every 2 seconds
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
       clearInterval(interval);
     };
   }, [currentWeekStart]);
@@ -102,7 +93,7 @@ export default function Calendar({ currentUser }: CalendarProps) {
   const handleMouseUp = useRef<() => void>(() => {});
 
   useEffect(() => {
-    handleMouseUp.current = () => {
+    handleMouseUp.current = async () => {
       if (!dragStart || !dragAction) {
         setIsDragging(false);
         setDragStart(null);
@@ -114,16 +105,21 @@ export default function Calendar({ currentUser }: CalendarProps) {
 
       // Apply the same action (select or deselect) to all slots in the selection
       const slotsToUpdate = Array.from(selectedSlots);
-      slotsToUpdate.forEach((key) => {
+      const updatePromises = slotsToUpdate.map((key) => {
         const [day, timeIndex] = key.split("-").map(Number);
         const shouldSelect = dragAction === "select";
-        updateCalendarSlot(currentWeekStart, day, timeIndex, currentUser.id, currentUser.name, currentUser.color, shouldSelect);
+        return updateCalendarSlot(currentWeekStart, day, timeIndex, currentUser.id, currentUser.name, currentUser.color, shouldSelect);
       });
 
-      // Immediately refresh calendar data after updates
-      const updated = getCalendarData(currentWeekStart);
-      setCalendarData(updated);
-      calendarDataRef.current = updated;
+      try {
+        await Promise.all(updatePromises);
+        // Refresh calendar data after updates
+        const updated = await getCalendarData(currentWeekStart);
+        setCalendarData(updated);
+        calendarDataRef.current = updated;
+      } catch (error) {
+        console.error("Error updating calendar slots:", error);
+      }
 
       setIsDragging(false);
       setDragStart(null);
