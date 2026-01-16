@@ -4,18 +4,34 @@ import { kv } from "@vercel/kv";
 const USERS_KEY = "when-to-meet:users";
 const CALENDAR_KEY = "when-to-meet:calendar";
 
+// Helper to check if KV is configured
+function isKVConfigured(): boolean {
+  return !!(
+    process.env.KV_REST_API_URL &&
+    process.env.KV_REST_API_TOKEN
+  );
+}
+
 // Users operations
 export async function getAllUsers(): Promise<User[]> {
+  if (!isKVConfigured()) {
+    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
+    throw new Error("Database not configured. Please set up Vercel KV in your project settings.");
+  }
   try {
     const data = await kv.get<User[]>(USERS_KEY);
     return data || [];
   } catch (error) {
     console.error("Error fetching users from KV:", error);
-    return [];
+    throw error;
   }
 }
 
 export async function saveUser(user: User): Promise<void> {
+  if (!isKVConfigured()) {
+    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
+    throw new Error("Database not configured. Please set up Vercel KV in your project settings.");
+  }
   try {
     const users = await getAllUsers();
     const existingIndex = users.findIndex((u) => u.id === user.id);
@@ -59,6 +75,10 @@ export async function deleteUser(userId: string): Promise<void> {
 
 // Calendar operations
 export async function getAllCalendarData(): Promise<Record<string, CalendarData>> {
+  if (!isKVConfigured()) {
+    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
+    return {};
+  }
   try {
     const data = await kv.get<Record<string, CalendarData>>(CALENDAR_KEY);
     return data || {};
@@ -77,6 +97,10 @@ export async function saveCalendarData(
   weekKey: string,
   data: CalendarData
 ): Promise<void> {
+  if (!isKVConfigured()) {
+    console.error("Vercel KV is not configured. Please set up KV in your Vercel dashboard.");
+    throw new Error("Database not configured. Please set up Vercel KV in your project settings.");
+  }
   try {
     const allData = await getAllCalendarData();
     allData[weekKey] = data;

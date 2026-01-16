@@ -78,7 +78,8 @@ export default function UserProfileModal({ isOpen, onClose, onDelete }: UserProf
       setError("");
     } catch (error) {
       console.error("Error saving user:", error);
-      setError("Failed to save profile. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to save profile. Please try again.";
+      setError(errorMessage);
     }
   };
 

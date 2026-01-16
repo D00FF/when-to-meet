@@ -35,7 +35,9 @@ export async function saveUser(user: User): Promise<void> {
       body: JSON.stringify(user),
     });
     if (!response.ok) {
-      throw new Error("Failed to save user");
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || "Failed to save user";
+      throw new Error(errorMessage);
     }
     // Also save locally for session
     saveUserLocally(user);
