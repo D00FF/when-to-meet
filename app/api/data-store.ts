@@ -6,10 +6,20 @@ const CALENDAR_KEY = "when-to-meet:calendar";
 
 // Helper to check if KV is configured
 function isKVConfigured(): boolean {
-  return !!(
-    process.env.KV_REST_API_URL &&
-    process.env.KV_REST_API_TOKEN
-  );
+  const hasUrl = !!process.env.KV_REST_API_URL;
+  const hasToken = !!process.env.KV_REST_API_TOKEN;
+  
+  // Log for debugging (only in development)
+  if (process.env.NODE_ENV === 'development' && (!hasUrl || !hasToken)) {
+    console.log('KV Config Check:', {
+      hasUrl,
+      hasToken,
+      urlLength: process.env.KV_REST_API_URL?.length || 0,
+      tokenLength: process.env.KV_REST_API_TOKEN?.length || 0
+    });
+  }
+  
+  return hasUrl && hasToken;
 }
 
 // Users operations
