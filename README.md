@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# When to Meet - Shared Calendar Application
+
+A collaborative calendar application built with Next.js that allows multiple users to coordinate meeting times by selecting their availability on a shared weekly calendar.
+
+## Features
+
+- **Weekly Calendar View**: Navigate between weeks with a clean, modern interface
+- **Multi-User Support**: Multiple users can select the same time slots with visual color coding
+- **User Profiles**: Create and manage user profiles with custom colors
+- **Persistent Storage**: All data is stored locally in the browser
+- **Week-Specific Data**: Each week maintains its own independent schedule
+- **Drag Selection**: Click and drag to quickly select multiple time slots
+- **Visual Indicators**: 
+  - Circular badges with user initials for selected slots
+  - Divided borders and backgrounds when multiple users select the same slot
+  - Color-coded legend showing all participants
+
+## Tech Stack
+
+- **Next.js 16.1.2** - React framework
+- **TypeScript** - Type safety
+- **Tailwind CSS 4** - Styling
+- **React 19** - UI library
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js (v18 or higher)
+- pnpm (or npm/yarn)
+
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/yourusername/when-to-meet.git
+cd when-to-meet
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+pnpm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Run the development server:
+```bash
+pnpm dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-## Learn More
+## Usage
 
-To learn more about Next.js, take a look at the following resources:
+1. **Create a Profile**: When you first visit, you'll be prompted to create a profile with your name and color
+2. **Select Time Slots**: Click or drag over time slots to mark your availability
+3. **View Others**: See all participants and their selected times in the legend
+4. **Navigate Weeks**: Use the arrow buttons to move between weeks
+5. **Edit Profile**: Click "Edit Profile" to change your name or color
+6. **Sign Out**: Use "Sign Out" to switch to a different profile
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+app/
+  components/
+    Calendar.tsx       # Main calendar component with week navigation
+    Legend.tsx         # Participants legend
+    UserProfileModal.tsx # Profile creation/editing modal
+  utils/
+    storage.ts         # LocalStorage utilities
+    dateUtils.ts      # Date and week calculation utilities
+    helpers.ts        # Helper functions (initials, etc.)
+  types.ts            # TypeScript type definitions
+  page.tsx            # Main page component
+  layout.tsx          # Root layout
+  globals.css         # Global styles
+```
 
-## Deploy on Vercel
+## Features in Detail
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Week Navigation
+- Automatically loads to the current week
+- Shows week range (e.g., "Week of Jan 11th - 17th")
+- Day numbers and abbreviations align with calendar columns
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Multi-User Slots
+- When multiple users select the same slot:
+  - Background is divided horizontally with each user's color
+  - Border is divided to match the background
+  - Icons shrink proportionally to fit all users on one line
+
+### Profile Management
+- Profiles are permanently saved
+- Auto-login by name (if you enter an existing name, you'll be logged into that profile)
+- Delete profile option removes all user data
+- Sign out to switch between profiles
+
+## Browser Compatibility
+
+- Modern browsers with localStorage support
+- Best experience in Chrome, Firefox, Safari, or Edge
+
+## License
+
+This project is open source and available for use.
