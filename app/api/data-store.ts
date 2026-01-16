@@ -1,91 +1,69 @@
 import { User, CalendarData } from "../types";
-import { promises as fs } from "fs";
-import path from "path";
+import { kv } from "@vercel/kv";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
-const CALENDAR_FILE = path.join(DATA_DIR, "calendar.json");
-
-// Ensure data directory exists
-async function ensureDataDir() {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-  } catch (error) {
-    // Directory already exists or other error
-  }
-}
-
-// Initialize files if they don't exist
-async function initFiles() {
-  await ensureDataDir();
-  try {
-    await fs.access(USERS_FILE);
-  } catch {
-    await fs.writeFile(USERS_FILE, JSON.stringify([]), "utf-8");
-  }
-  try {
-    await fs.access(CALENDAR_FILE);
-  } catch {
-    await fs.writeFile(CALENDAR_FILE, JSON.stringify({}), "utf-8");
-  }
-}
+const USERS_KEY = "when-to-meet:users";
+const CALENDAR_KEY = "when-to-meet:calendar";
 
 // Users operations
 export async function getAllUsers(): Promise<User[]> {
-  await initFiles();
   try {
-    const data = await fs.readFile(USERS_FILE, "utf-8");
-    return JSON.parse(data);
-  } catch {
+    const data = await kv.get<User[]>(USERS_KEY);
+    return data || [];
+  } catch (error) {
+    console.error("Error fetching users from KV:", error);
     return [];
   }
 }
 
 export async function saveUser(user: User): Promise<void> {
-  await initFiles();
-  const users = await getAllUsers();
-  const existingIndex = users.findIndex((u) => u.id === user.id);
-  if (existingIndex >= 0) {
-    users[existingIndex] = user;
-  } else {
-    users.push(user);
+  try {
+    const users = await getAllUsers();
+    const existingIndex = users.findIndex((u) => u.id === user.id);
+    if (existingIndex >= 0) {
+      users[existingIndex] = user;
+    } else {
+      users.push(user);
+    }
+    await kv.set(USERS_KEY, users);
+  } catch (error) {
+    console.error("Error saving user to KV:", error);
+    throw error;
   }
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2), "utf-8");
 }
 
 export async function deleteUser(userId: string): Promise<void> {
-  await initFiles();
-  const users = await getAllUsers();
-  const filtered = users.filter((u) => u.id !== userId);
-  await fs.writeFile(USERS_FILE, JSON.stringify(filtered, null, 2), "utf-8");
-  
-  // Also remove from calendar data
-  const calendarData = await getAllCalendarData();
-  Object.keys(calendarData).forEach((weekKey) => {
-    const weekData = calendarData[weekKey];
-    Object.keys(weekData).forEach((slotKey) => {
-      weekData[slotKey] = weekData[slotKey].filter(
-        (entry) => entry.userId !== userId
-      );
-      if (weekData[slotKey].length === 0) {
-        delete weekData[slotKey];
-      }
+  try {
+    const users = await getAllUsers();
+    const filtered = users.filter((u) => u.id !== userId);
+    await kv.set(USERS_KEY, filtered);
+    
+    // Also remove from calendar data
+    const calendarData = await getAllCalendarData();
+    Object.keys(calendarData).forEach((weekKey) => {
+      const weekData = calendarData[weekKey];
+      Object.keys(weekData).forEach((slotKey) => {
+        weekData[slotKey] = weekData[slotKey].filter(
+          (entry) => entry.userId !== userId
+        );
+        if (weekData[slotKey].length === 0) {
+          delete weekData[slotKey];
+        }
+      });
     });
-  });
-  await fs.writeFile(
-    CALENDAR_FILE,
-    JSON.stringify(calendarData, null, 2),
-    "utf-8"
-  );
+    await kv.set(CALENDAR_KEY, calendarData);
+  } catch (error) {
+    console.error("Error deleting user from KV:", error);
+    throw error;
+  }
 }
 
 // Calendar operations
 export async function getAllCalendarData(): Promise<Record<string, CalendarData>> {
-  await initFiles();
   try {
-    const data = await fs.readFile(CALENDAR_FILE, "utf-8");
-    return JSON.parse(data);
-  } catch {
+    const data = await kv.get<Record<string, CalendarData>>(CALENDAR_KEY);
+    return data || {};
+  } catch (error) {
+    console.error("Error fetching calendar data from KV:", error);
     return {};
   }
 }
@@ -99,14 +77,14 @@ export async function saveCalendarData(
   weekKey: string,
   data: CalendarData
 ): Promise<void> {
-  await initFiles();
-  const allData = await getAllCalendarData();
-  allData[weekKey] = data;
-  await fs.writeFile(
-    CALENDAR_FILE,
-    JSON.stringify(allData, null, 2),
-    "utf-8"
-  );
+  try {
+    const allData = await getAllCalendarData();
+    allData[weekKey] = data;
+    await kv.set(CALENDAR_KEY, allData);
+  } catch (error) {
+    console.error("Error saving calendar data to KV:", error);
+    throw error;
+  }
 }
 
 export async function updateCalendarSlot(
@@ -155,27 +133,28 @@ export async function updateUserEntries(
   userName: string,
   color: string
 ): Promise<void> {
-  const allData = await getAllCalendarData();
-  let updated = false;
+  try {
+    const allData = await getAllCalendarData();
+    let updated = false;
 
-  Object.keys(allData).forEach((weekKey) => {
-    const calendarData = allData[weekKey];
-    Object.keys(calendarData).forEach((slotKey) => {
-      const entries = calendarData[slotKey];
-      const userIndex = entries.findIndex((entry) => entry.userId === userId);
-      if (userIndex !== -1) {
-        entries[userIndex] = { userId, userName, color };
-        updated = true;
-      }
+    Object.keys(allData).forEach((weekKey) => {
+      const calendarData = allData[weekKey];
+      Object.keys(calendarData).forEach((slotKey) => {
+        const entries = calendarData[slotKey];
+        const userIndex = entries.findIndex((entry) => entry.userId === userId);
+        if (userIndex !== -1) {
+          entries[userIndex] = { userId, userName, color };
+          updated = true;
+        }
+      });
     });
-  });
 
-  if (updated) {
-    await fs.writeFile(
-      CALENDAR_FILE,
-      JSON.stringify(allData, null, 2),
-      "utf-8"
-    );
+    if (updated) {
+      await kv.set(CALENDAR_KEY, allData);
+    }
+  } catch (error) {
+    console.error("Error updating user entries in KV:", error);
+    throw error;
   }
 }
 
